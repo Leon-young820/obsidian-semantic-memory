@@ -1,12 +1,19 @@
+<div align="center">
+
 # obsidian-semantic-memory
 
-Semantic memory for Obsidian — local-first indexing, semantic retrieval, FTS, entities, facts, and MCP tools for agents.
+**Semantic memory for Obsidian — local-first indexing, semantic retrieval, FTS, entities, facts, and MCP tools for agents.**
 
 [![CI](https://github.com/sterben-enec/obsidian-semantic-memory/actions/workflows/ci.yml/badge.svg)](https://github.com/sterben-enec/obsidian-semantic-memory/actions/workflows/ci.yml)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue.svg)](./LICENSE)
+[![MCP ready](https://img.shields.io/badge/MCP-ready-6E56CF)](https://modelcontextprotocol.io/)
 
-**[Русская версия → README.ru.md](README.ru.md)**
+**English** · **[简体中文 → README.zh.md](README.zh.md)** · **[Русский → README.ru.md](README.ru.md)**
+
+</div>
+
+---
 
 ## What it is
 
@@ -14,12 +21,14 @@ Semantic memory for Obsidian — local-first indexing, semantic retrieval, FTS, 
 
 It indexes Markdown notes into SQLite + vector search and exposes a retrieval stack that combines:
 
-- semantic similarity
-- BM25 full-text search
-- entity lookup
-- graph relations
-- structured facts
-- recency-aware ranking
+| Signal | What it gives you |
+|---|---|
+| **Semantic similarity** | finds notes that mean the same thing in different words |
+| **BM25 full-text search** | exact terms, names, error strings, code identifiers |
+| **Entity lookup** | jumps straight to a person, project, or concept |
+| **Graph relations** | follows wikilinks and relations you already wrote |
+| **Structured facts** | answers that need a specific assertion, not a passage |
+| **Recency-aware ranking** | recent notes outrank stale ones when both match |
 
 It is built for **local-first personal knowledge systems** — not cloud dashboards, not hosted SaaS search.
 
@@ -39,43 +48,30 @@ It is built for **local-first personal knowledge systems** — not cloud dashboa
 - **HTTP API** for local integrations
 - **Structured memory** with entities, relations, and facts
 - **`.semanticignore`** support for excluding private/noisy paths
+- **Conversation logging** — Claude Code sessions become searchable notes
 
 ## Quick start
 
 ```bash
 git clone https://github.com/sterben-enec/obsidian-semantic-memory
 cd obsidian-semantic-memory
-cp .env.example .env
+cp .env.example .env      # set VAULT_PATH inside
 npm install
 npm run build
 ```
 
-Set `VAULT_PATH` in `.env`, then:
+Then pick a command:
 
 ```bash
-# full rebuild
-node dist/cli.js rebuild
-
-# incremental indexing
-node dist/cli.js index
-
-# semantic retrieval
+node dist/cli.js rebuild     # full rebuild
+node dist/cli.js index       # incremental indexing
 node dist/cli.js search "what do I know about project X"
-
-# watch for changes
-node dist/cli.js watch
-
-# local HTTP API
-node dist/cli.js serve
-
-# MCP server
-node dist/cli.js mcp
-
-# log a Claude Code session to vault (invoked automatically via Stop hook)
-node dist/cli.js log-conversation
+node dist/cli.js watch       # reindex on change
+node dist/cli.js serve       # local HTTP API
+node dist/cli.js mcp         # MCP server over stdio
 ```
 
-## Architecture
+## How it works
 
 ```text
 Obsidian vault (.md files)
@@ -91,9 +87,11 @@ Obsidian vault (.md files)
 
 ## Requirements
 
-- Node.js 18+
-- For local embeddings: ~560 MB model cache on first run
-- For OpenAI embeddings: `OPENAI_API_KEY`
+| Requirement | Notes |
+|---|---|
+| Node.js 18+ | required |
+| ~560 MB model cache | local embeddings, first run only |
+| `OPENAI_API_KEY` | only if you choose OpenAI embeddings |
 
 ## Configuration
 
@@ -128,13 +126,15 @@ E5 models automatically use asymmetric `query:` / `passage:` prefixes.
 
 The MCP server exposes 7 tools over stdio:
 
-- `vault_search` — semantic retrieval
-- `vault_fts` — BM25 keyword/phrase search
-- `vault_entity` — entity lookup by name or alias
-- `vault_facts` — facts for an entity
-- `vault_status` — index counts and health snapshot
-- `vault_remember` — append text to a daily memory note
-- `vault_store_fact` — write a structured fact
+| Tool | Purpose |
+|---|---|
+| `vault_search` | semantic retrieval |
+| `vault_fts` | BM25 keyword/phrase search |
+| `vault_entity` | entity lookup by name or alias |
+| `vault_facts` | facts for an entity |
+| `vault_status` | index counts and health snapshot |
+| `vault_remember` | append text to a daily memory note |
+| `vault_store_fact` | write a structured fact |
 
 Example MCP config:
 
@@ -309,6 +309,15 @@ Suggested topics:
 
 `obsidian`, `semantic-search`, `mcp`, `knowledge-graph`, `sqlite`, `vector-search`, `local-first`, `typescript`
 
+---
+
+<div align="center">
+
+**ISC licensed** · built for people who want their notes to stay theirs
+
+</div>
+
 ## License
 
 ISC
+
