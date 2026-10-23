@@ -27,7 +27,7 @@ export async function walkVault(vaultPath: string, options: WalkOptions = {}): P
     const entries = await fs.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       const full = path.join(dir, entry.name);
-      const rel = path.relative(vaultPath, full);
+      const rel = path.relative(vaultPath, full).split(path.sep).join('/');
       if (patterns.some(p => {
         const clean = p.replace(/\/$/, '');
         return rel === clean || rel.startsWith(clean + '/') || rel.includes('/' + clean + '/') || rel.endsWith('/' + clean);

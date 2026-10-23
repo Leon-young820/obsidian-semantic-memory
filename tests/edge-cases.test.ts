@@ -113,7 +113,8 @@ describe('EDGE CASES - Unicode and Special Characters', () => {
         wikilinks: []
       };
       const chunks = chunkNote(r);
-      expect(chunks.length).toBeGreaterThanOrEqual(1);
+      // Empty text produces zero chunks on purpose: nothing to retrieve.
+      expect(chunks.length).toBe(0);
     });
 
     it('handles whitespace-only body', () => {
@@ -125,7 +126,8 @@ describe('EDGE CASES - Unicode and Special Characters', () => {
         wikilinks: []
       };
       const chunks = chunkNote(r);
-      expect(chunks.length).toBeGreaterThanOrEqual(1);
+      // Empty text produces zero chunks on purpose: nothing to retrieve.
+      expect(chunks.length).toBe(0);
     });
 
     it('handles very large documents', () => {
@@ -152,10 +154,13 @@ describe('EDGE CASES - Unicode and Special Characters', () => {
         wikilinks: []
       };
       const chunks = chunkNote(r);
-      // H1 and H3 should each produce a section; H4 is not split
-      expect(chunks.length).toBe(2);
-      expect(chunks[0].headingPath).toBe('H1');
-      expect(chunks[1].headingPath).toBe('H1 > H3');
+      // H1 and H3 each open a section; H4 does not split.
+      // Only the H3 section survives: the H1 section body is just the
+      // "### H3" heading line, so it is a heading-only fragment and is
+      // filtered out by design (nothing to retrieve).
+      expect(chunks.length).toBe(1);
+      expect(chunks[0].headingPath).toBe('H1 > H3');
+      expect(chunks[0].text).toContain('Content');
     });
   });
 

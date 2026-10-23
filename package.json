@@ -20,7 +20,13 @@
   "bin": {
     "osm-memory": "dist/cli.js"
   },
-  "keywords": ["obsidian", "semantic-memory", "mcp", "embeddings", "knowledge-graph"],
+  "keywords": [
+    "obsidian",
+    "semantic-memory",
+    "mcp",
+    "embeddings",
+    "knowledge-graph"
+  ],
   "homepage": "https://github.com/sterben-enec/obsidian-semantic-memory",
   "repository": {
     "type": "git",
@@ -53,5 +59,11 @@
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.8.0": true,
+    "esbuild@0.27.4": true,
+    "protobufjs@6.11.4": true,
+    "sharp@0.32.6": true
   }
 }

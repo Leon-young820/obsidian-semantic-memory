@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { openDb } from '../../src/db/client';
 import { runMigrations } from '../../src/db/schema';
 import { VectorIndex } from '../../src/embeddings/vectorIndex';
-import { createMcpTools } from '../../src/mcp/server';
+import { createMcpTools, resultLimit } from '../../src/mcp/server';
 import fs from 'fs';
 
 const DB = '/tmp/test-mcp.db';
@@ -23,6 +23,13 @@ function seedDb() {
 }
 
 describe('MCP tools', () => {
+  it('caps result counts for context efficiency', () => {
+    expect(resultLimit(undefined)).toBe(3);
+    expect(resultLimit(5)).toBe(5);
+    expect(resultLimit(100)).toBe(5);
+    expect(resultLimit(0)).toBe(1);
+  });
+
   it('vault_status returns counts', async () => {
     const db = seedDb();
     const idx = new VectorIndex(db, 4); idx.initTable();

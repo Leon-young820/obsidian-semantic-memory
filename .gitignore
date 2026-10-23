@@ -8,3 +8,12 @@ coverage/
 .env.*
 !.env.example
 REVIEW-CORA-2026-03-31.md
+
+# Lock/temp files
+.dsh-ops-update-*.lock
+watch.pid
+watch.log.err
+.semantic-memory/
+
+# Local machine launch scripts (contain absolute paths, not part of the project)
+start-*.ps1

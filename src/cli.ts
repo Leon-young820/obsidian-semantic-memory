@@ -155,6 +155,21 @@ program
   .description("Start MCP server (stdio transport) for agent connectivity")
   .action(async () => {
     const { config, db, provider, vectorIndex } = setup();
+
+    // Warm the embedding model in the background.
+    //
+    // WHY: the first real query otherwise pays the full model load (~10-14s on
+    // this machine for a 300MB transformer). The MCP client's own tool timeout is
+    // shorter than that, so the first search after every restart reported
+    // "tool execution may have occurred; outcome unknown" instead of an answer.
+    // Warm-up cannot be awaited — the MCP handshake must respond immediately or
+    // the client treats the server as failed to start — so it is fire-and-forget
+    // with errors swallowed (a failed warm-up must not affect serving).
+    void provider
+      .embed(['warm-up'])
+      .then(() => process.stderr.write('[mcp] embedding model warmed' + String.fromCharCode(10)))
+      .catch(() => {});
+
     await startMcpServer(db, vectorIndex, provider, config);
   });
 

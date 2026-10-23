@@ -4,12 +4,15 @@ import { openDb } from '../../src/db/client';
 import { runMigrations } from '../../src/db/schema';
 import fs from 'fs';
 
-const DB = '/tmp/test-vector.db';
-afterEach(() => { if (fs.existsSync(DB)) fs.unlinkSync(DB); });
+// Unique path per test: on Windows unlink fails while the connection is open,
+// so a shared path leaks rows into the next test.
+let seq = 0;
+const uniqueDbPath = () => `/tmp/test-vector-${process.pid}-${seq++}.db`;
+afterEach(() => { /* best effort; unique paths make leftover files harmless */ });
 
 describe('VectorIndex', () => {
   it('stores and retrieves embedding', () => {
-    const db = openDb(DB); runMigrations(db);
+    const db = openDb(uniqueDbPath()); runMigrations(db);
     const idx = new VectorIndex(db, 4); idx.initTable();
     idx.upsert(1, [1, 0, 0, 0]);
     const got = idx.get(1);
@@ -19,7 +22,7 @@ describe('VectorIndex', () => {
   });
 
   it('returns nearest neighbors in order', () => {
-    const db = openDb(DB); runMigrations(db);
+    const db = openDb(uniqueDbPath()); runMigrations(db);
     const idx = new VectorIndex(db, 4); idx.initTable();
     idx.upsert(1, [1, 0, 0, 0]);
     idx.upsert(2, [0.9, 0.1, 0, 0]);
@@ -30,7 +33,7 @@ describe('VectorIndex', () => {
   });
 
   it('deletes embedding', () => {
-    const db = openDb(DB); runMigrations(db);
+    const db = openDb(uniqueDbPath()); runMigrations(db);
     const idx = new VectorIndex(db, 4); idx.initTable();
     idx.upsert(1, [1, 0, 0, 0]);
     idx.delete(1);
@@ -38,7 +41,7 @@ describe('VectorIndex', () => {
   });
 
   it('returns bounded scores between -1 and 1', () => {
-    const db = openDb(DB); runMigrations(db);
+    const db = openDb(uniqueDbPath()); runMigrations(db);
     const idx = new VectorIndex(db, 4); idx.initTable();
     idx.upsert(1, [1, 0, 0, 0]);
     idx.upsert(2, [0, 0, 0, 1]); // orthogonal

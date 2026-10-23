@@ -26,7 +26,8 @@ describe("resolveJSONLPath", () => {
     const result = resolveJSONLPath("abc-123", "/Users/jmassa/Aperta/ID");
     expect(result).toContain("-Users-jmassa-Aperta-ID");
     expect(result).toContain("abc-123.jsonl");
-    expect(result).toContain(".claude/projects");
+    // Windows returns backslashes; normalise before asserting.
+    expect(result.replace(/\\/g, '/')).toContain('.claude/projects');
   });
 });
 

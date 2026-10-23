@@ -128,6 +128,51 @@ const migrations: Migration[] = [
       `).run();
     },
   },
+  {
+    version: 5,
+    name: 'fts5_chunks_trigram',
+    up: (db) => {
+      // A second lexical index, using the `trigram` tokenizer.
+      //
+      // WHY a second table instead of changing chunks_fts: the default
+      // `unicode61` tokenizer breaks on non-alphanumerics, and Chinese has no
+      // spaces, so "本机端口为3080" is a single token — the query "端口" misses it
+      // entirely. `trigram` indexes every 3-character window, which is the
+      // documented way to get substring (and usable CJK) matching out of FTS5.
+      //
+      // chunks_fts is left untouched because the existing vault_fts tool reports
+      // its bm25 scores; changing its tokenizer would silently change that tool's
+      // output. This table is only used to rank candidates (lexicalRanks in
+      // retrieval/orchestrator.ts), never to report a score.
+      db.prepare(`DROP TABLE IF EXISTS chunks_trigram`).run();
+      db.prepare(`DROP TRIGGER IF EXISTS chunks_tri_insert`).run();
+      db.prepare(`DROP TRIGGER IF EXISTS chunks_tri_delete`).run();
+      db.prepare(`DROP TRIGGER IF EXISTS chunks_tri_update`).run();
+
+      db.prepare(`
+        CREATE VIRTUAL TABLE chunks_trigram
+        USING fts5(text, heading_path, content='chunks', content_rowid='id', tokenize='trigram')
+      `).run();
+      db.prepare(`INSERT INTO chunks_trigram(rowid, text, heading_path) SELECT id, text, heading_path FROM chunks`).run();
+
+      db.prepare(`
+        CREATE TRIGGER chunks_tri_insert AFTER INSERT ON chunks BEGIN
+          INSERT INTO chunks_trigram(rowid, text, heading_path) VALUES (new.id, new.text, new.heading_path);
+        END
+      `).run();
+      db.prepare(`
+        CREATE TRIGGER chunks_tri_delete AFTER DELETE ON chunks BEGIN
+          INSERT INTO chunks_trigram(chunks_trigram, rowid, text, heading_path) VALUES ('delete', old.id, old.text, old.heading_path);
+        END
+      `).run();
+      db.prepare(`
+        CREATE TRIGGER chunks_tri_update AFTER UPDATE ON chunks BEGIN
+          INSERT INTO chunks_trigram(chunks_trigram, rowid, text, heading_path) VALUES ('delete', old.id, old.text, old.heading_path);
+          INSERT INTO chunks_trigram(rowid, text, heading_path) VALUES (new.id, new.text, new.heading_path);
+        END
+      `).run();
+    },
+  },
 ];
 
 export function runMigrations(db: Database.Database): void {

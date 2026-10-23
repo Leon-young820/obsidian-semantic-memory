@@ -5,12 +5,19 @@ import { runMigrations } from '../../src/db/schema';
 import { VectorIndex } from '../../src/embeddings/vectorIndex';
 import fs from 'fs';
 
-const DB = '/tmp/test-orch.db';
-afterEach(() => { if (fs.existsSync(DB)) fs.unlinkSync(DB); });
+// Unique database path per test.
+//
+// WHY: on Windows, unlinking an SQLite file while the connection is
+// still open fails with EBUSY. With one shared path the previous test's
+// rows survive and the next insert dies on "UNIQUE constraint failed" —
+// which is why these tests failed on Windows but not on macOS/Linux.
+let seq = 0;
+const uniqueDbPath = () => `/tmp/test-orch-${process.pid}-${seq++}.db`;
+afterEach(() => { /* best effort; unique paths make leftovers harmless */ });
 
 describe('retrieveContext', () => {
   it('returns hits with reason field', async () => {
-    const db = openDb(DB); runMigrations(db);
+    const dbPath = uniqueDbPath(); const db = openDb(dbPath); runMigrations(db);
     db.prepare("INSERT INTO notes VALUES ('/v/john.md','John Doe','person','h','2026-03-30','{}')").run();
     db.prepare("INSERT INTO chunks (note_path,heading_path,text,start_line,end_line,token_count,chunk_hash) VALUES (?,?,?,?,?,?,?)")
       .run('/v/john.md','','John at Acme.',0,2,5,'h1');
@@ -25,7 +32,7 @@ describe('retrieveContext', () => {
   });
 
   it('boosts priority paths', async () => {
-    const db = openDb(DB); runMigrations(db);
+    const dbPath = uniqueDbPath(); const db = openDb(dbPath); runMigrations(db);
     // Two notes: one in OpenClaw Memory (priority), one generic
     db.prepare("INSERT INTO notes VALUES ('/v/OpenClaw Memory/User.md','User','preference','h1','2026-03-30','{}')").run();
     db.prepare("INSERT INTO notes VALUES ('/v/scratch.md','Scratch',null,'h2','2026-03-30','{}')").run();
@@ -51,7 +58,7 @@ describe('retrieveContext', () => {
   });
 
   it('includes graph-related notes in results', async () => {
-    const db = openDb(DB); runMigrations(db);
+    const dbPath = uniqueDbPath(); const db = openDb(dbPath); runMigrations(db);
 
     // Create two notes with entities
     db.prepare("INSERT INTO notes VALUES ('/v/alpha.md','Alpha','project','h1','2026-03-30','{}')").run();
@@ -97,7 +104,7 @@ describe('retrieveContext', () => {
   });
 
   it('boosts hits with matching facts', async () => {
-    const db = openDb(DB); runMigrations(db);
+    const dbPath = uniqueDbPath(); const db = openDb(dbPath); runMigrations(db);
 
     db.prepare("INSERT INTO notes VALUES ('/v/john.md','John','person','h1','2026-03-30','{}')").run();
     db.prepare("INSERT INTO chunks (note_path,heading_path,text,start_line,end_line,token_count,chunk_hash) VALUES (?,?,?,?,?,?,?)")
@@ -122,6 +129,77 @@ describe('retrieveContext', () => {
     const result = await retrieveContext(db, idx, provider, 'Acme', 5, []);
     expect(result.hits.length).toBeGreaterThanOrEqual(1);
     expect(result.hits[0].reason).toContain('fact');
+
+    db.close();
+  });
+
+  // Regression for the 2026-10-21 finding: session handoffs are 55% of the
+  // indexed text with file-listing prose, so their cosine score lands within
+  // 0.01 of every query and outranked real lesson notes in 20 of 24 top-3 slots.
+  // Deleting them from the index would lose "where were we", so the fix is a
+  // per-directory multiplier instead.
+  it('down-weights session handoff notes below lesson notes', async () => {
+    // MIN_SCORE is captured when the module loads, and the default floor (0.75)
+    // would simply drop the handoff hit — which is the desired end state but
+    // hides whether the multiplier is what caused it. So re-import the module
+    // with the floor disabled and compare scores directly.
+    const prevMin = process.env.MEMORY_MIN_SCORE;
+    process.env.MEMORY_MIN_SCORE = '0';
+    vi.resetModules();
+    const { retrieveContext: retrieve } = await import('../../src/retrieval/orchestrator');
+
+    const dbPath = uniqueDbPath(); const db = openDb(dbPath); runMigrations(db);
+
+    const handoff = '/v/04_会话交接/handoff.md';
+    const lesson = '/v/03_通用技术与踩坑/lesson.md';
+    for (const p of [handoff, lesson]) {
+      db.prepare('INSERT INTO notes VALUES (?,?,?,?,?,?)').run(p, p, 'note', 'h', '2026-10-01', '{}');
+      db.prepare('INSERT INTO chunks (note_path,heading_path,text,start_line,end_line,token_count,chunk_hash) VALUES (?,?,?,?,?,?,?)')
+        .run(p, '', 'identical text for both notes', 0, 2, 5, 'h' + p);
+    }
+
+    const idx = new VectorIndex(db, 4); idx.initTable();
+    const rows = db.prepare('SELECT id, note_path FROM chunks ORDER BY id').all() as any[];
+    // Identical vectors: only the directory multiplier can separate them.
+    for (const r of rows) idx.upsert(r.id, [1, 0, 0, 0]);
+    const provider = { dimensions: 4, embed: vi.fn().mockResolvedValue([[1, 0, 0, 0]]) };
+
+    const result = await retrieve(db, idx, provider, 'identical text', 5, []);
+    const handoffHit = result.hits.find(h => h.notePath === handoff);
+    const lessonHit = result.hits.find(h => h.notePath === lesson);
+    expect(lessonHit).toBeTruthy();
+    expect(handoffHit!.score).toBeLessThan(lessonHit!.score);
+    expect(handoffHit!.reason).toContain('dirDown');
+
+    db.close();
+    if (prevMin === undefined) delete process.env.MEMORY_MIN_SCORE;
+    else process.env.MEMORY_MIN_SCORE = prevMin;
+    vi.resetModules();
+  });
+
+  // The vector scores of real candidates cluster in 0.92–0.99, so ordering is
+  // nearly arbitrary. An exact hit on a rare query word is much stronger
+  // evidence, which is why the lexical (trigram bm25) rank is fused in.
+  it('ranks an exact lexical match above an equal-similarity neighbour', async () => {
+    const dbPath = uniqueDbPath(); const db = openDb(dbPath); runMigrations(db);
+
+    const plain = '/v/plain.md';
+    const exact = '/v/exact.md';
+    db.prepare('INSERT INTO notes VALUES (?,?,?,?,?,?)').run(plain, 'Plain', 'note', 'h', '2026-10-01', '{}');
+    db.prepare('INSERT INTO notes VALUES (?,?,?,?,?,?)').run(exact, 'Exact', 'note', 'h', '2026-10-01', '{}');
+    db.prepare('INSERT INTO chunks (note_path,heading_path,text,start_line,end_line,token_count,chunk_hash) VALUES (?,?,?,?,?,?,?)')
+      .run(plain, '', 'filler text with nothing in common', 0, 2, 5, 'hp');
+    db.prepare('INSERT INTO chunks (note_path,heading_path,text,start_line,end_line,token_count,chunk_hash) VALUES (?,?,?,?,?,?,?)')
+      .run(exact, '', 'CADCraft 图纸批量导出说明', 0, 2, 5, 'he');
+
+    const idx = new VectorIndex(db, 4); idx.initTable();
+    for (const r of db.prepare('SELECT id FROM chunks ORDER BY id').all() as any[]) idx.upsert(r.id, [1, 0, 0, 0]);
+    const provider = { dimensions: 4, embed: vi.fn().mockResolvedValue([[1, 0, 0, 0]]) };
+
+    const result = await retrieveContext(db, idx, provider, 'CADCraft 导出', 5, []);
+    expect(result.hits.map(h => h.notePath)).toContain(exact);
+    expect(result.hits[0].notePath).toBe(exact);
+    expect(result.hits[0].reason).toContain('lex');
 
     db.close();
   });

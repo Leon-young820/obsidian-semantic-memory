@@ -34,7 +34,10 @@ export class LocalEmbeddingProvider implements EmbeddingProvider {
     if (this.initPromise) return this.initPromise;
     this.initPromise = (async () => {
       const { pipeline, env } = await import('@xenova/transformers' as any);
-      env.cacheDir = path.join(os.homedir(), '.cache', 'osm-memory', 'models');
+      const cacheDir = process.env.OSM_MEMORY_CACHE_DIR?.trim() || path.join(os.homedir(), '.cache', 'osm-memory', 'models');
+      const remoteHost = process.env.OSM_MEMORY_REMOTE_HOST?.trim();
+      env.cacheDir = cacheDir;
+      if (remoteHost) env.remoteHost = remoteHost.endsWith('/') ? remoteHost : `${remoteHost}/`;
       this.extractor = await pipeline('feature-extraction', this.modelName);
       return this.extractor;
     })();
